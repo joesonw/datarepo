@@ -45,6 +45,7 @@ func Parse(method astgen.Method, pageRequestName string) (query Query, err error
 		} else {
 			query.Action = FindOne
 		}
+		name = name[4:]
 	}
 
 	if query.Action == Count && resultType.String() != "int64" {

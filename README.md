@@ -3,13 +3,14 @@ type Mock struct {
 	ID primitive.ObjectID
 }
 
-//go:generate datarepo -e mongo -p PageRequest
+//go:generate datarepo -p PageRequest
 type Test interface {
 	Create(ctx context.Context, user *Mock) error
 	Count(ctx context.Context) (int64, error)
-	FindOneByUsername(ctx context.Context, username string) (*Mock, error)
-	FindOneByKeyOfCredentials(ctx context.Context, key string) (*Mock, error)
+	FindByUsername(ctx context.Context, username string) (*Mock, error)
+	FindByKeyOfCredentials(ctx context.Context, key string) (*Mock, error)
 	FindManyByUserOrderByID(ctx context.Context, user string, page PageRequest) ([]*Mock, error)
+	FindOneByUsernameAndLikeIt(ctx context.Context, username string, it string) (*Mock, error)
 }
 
 type PageRequest struct {
@@ -42,20 +43,14 @@ func (z *TestRepository) Create(ctx context.Context, user *Mock) error {
 }
 func (z *TestRepository) Count(ctx context.Context) (int64, error) {
 
-	return z.collection.CountDocuments(ctx, bson.M{
-		"$and": bson.A{},
-	})
+	return z.collection.CountDocuments(ctx, nil)
 
 }
-func (z *TestRepository) FindOneByUsername(ctx context.Context, username string) (*Mock, error) {
+func (z *TestRepository) FindByUsername(ctx context.Context, username string) (*Mock, error) {
 
 	result := &Mock{}
 	err := z.collection.FindOne(ctx, bson.M{
-		"$and": bson.A{
-			bson.M{
-				"Username": bson.M{"$eq": username},
-			},
-		},
+		"Username": username,
 	}, nil).Decode(result)
 	if err != nil {
 		return nil, err
@@ -63,15 +58,11 @@ func (z *TestRepository) FindOneByUsername(ctx context.Context, username string)
 	return result, nil
 
 }
-func (z *TestRepository) FindOneByKeyOfCredentials(ctx context.Context, key string) (*Mock, error) {
+func (z *TestRepository) FindByKeyOfCredentials(ctx context.Context, key string) (*Mock, error) {
 
 	result := &Mock{}
 	err := z.collection.FindOne(ctx, bson.M{
-		"$and": bson.A{
-			bson.M{
-				"Credentials.Key": bson.M{"$eq": key},
-			},
-		},
+		"Credentials.Key": key,
 	}, nil).Decode(result)
 	if err != nil {
 		return nil, err
@@ -84,12 +75,9 @@ func (z *TestRepository) FindManyByUserOrderByID(ctx context.Context, user strin
 	pageSkip := page.Page * page.Size
 	cursor, err := z.collection.Find(ctx, bson.M{
 		"$query": bson.M{
-			"$and": bson.A{
-				bson.M{
-					"User": bson.M{"$eq": user},
-				},
-			},
-		}, "$orderBy": bson.M{"ID": 1},
+			"User": user,
+		},
+		"$orderBy": bson.M{"ID": 1},
 	}, &options.FindOptions{Limit: &page.Size, Skip: &pageSkip})
 	if err != nil {
 		return nil, err
@@ -104,6 +92,25 @@ func (z *TestRepository) FindManyByUserOrderByID(ctx context.Context, user strin
 		list = append(list, in)
 	}
 	return list, err
+
+}
+func (z *TestRepository) FindOneByUsernameAndLikeIt(ctx context.Context, username string, it string) (*Mock, error) {
+
+	result := &Mock{}
+	err := z.collection.FindOne(ctx, bson.M{
+		"$and": bson.A{
+			bson.M{
+				"Username": username,
+			},
+			bson.M{
+				"It": bson.M{"$regex": "/" + it + "/"},
+			},
+		},
+	}, nil).Decode(result)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 
 }
 ```

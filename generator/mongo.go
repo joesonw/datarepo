@@ -135,6 +135,10 @@ func (mongo Mongo) Generate(method astgen.Method, query parser.Query) (string, e
 func (Mongo) generateQuery(query parser.Query) string {
 	paris := make([]string, len(query.Group.Pairs))
 	for i, pair := range query.Group.Pairs {
+		if pair.Operator == parser.Equal {
+			paris[i] = fmt.Sprintf("bson.M{\n\"%s\": %s,\n}", pair.Key, pair.Name)
+			continue
+		}
 		operator := ""
 		value := pair.Name
 		switch pair.Operator {
@@ -142,8 +146,6 @@ func (Mongo) generateQuery(query parser.Query) string {
 			operator = "$in"
 		case parser.NotIn:
 			operator = "$nin"
-		case parser.Equal:
-			operator = "$eq"
 		case parser.NotEqual:
 			operator = "$ne"
 		case parser.MoreThan:
@@ -158,7 +160,7 @@ func (Mongo) generateQuery(query parser.Query) string {
 			operator = "$regex"
 			value = fmt.Sprintf("\"/\"+%s+\"/\"", value)
 		}
-		paris[i] = fmt.Sprintf("bson.M{\n\"%s\": bson.M{\"%s\": %s},\n},", pair.Key, operator, value)
+		paris[i] = fmt.Sprintf("bson.M{\n\"%s\": bson.M{\"%s\": %s},\n}", pair.Key, operator, value)
 	}
 
 	logic := "$and"
@@ -166,9 +168,16 @@ func (Mongo) generateQuery(query parser.Query) string {
 		logic = "$or"
 	}
 
-	stmt := fmt.Sprintf("bson.M{\n\"%s\":bson.A{\n%s\n},\n}", logic, strings.Join(paris, ",\n"))
+	stmt := strings.Join(paris, ",\n")
+	if len(query.Group.Pairs) > 1 {
+		stmt = fmt.Sprintf("bson.M{\n\"%s\":bson.A{\n%s,\n},\n}", logic, stmt)
+	}
+
 	if query.Negate {
 		stmt = fmt.Sprintf("bson.M{\n\"$not\":%s\n}", stmt)
+	}
+	if len(query.Group.Pairs) == 0 {
+		stmt = ""
 	}
 
 	if len(query.Sorts) > 0 {
@@ -181,7 +190,13 @@ func (Mongo) generateQuery(query parser.Query) string {
 			orderBy += fmt.Sprintf("\"%s\": %s", sort.Key, order)
 		}
 		orderBy += "}"
-		stmt = fmt.Sprintf("bson.M{\n\"$query\":%s,\"$orderBy\":%s,\n}", stmt, orderBy)
+		if stmt != "" {
+			stmt = fmt.Sprintf("\n\"$query\":%s,", stmt)
+		}
+		stmt = fmt.Sprintf("bson.M{%s\n\"$orderBy\":%s,\n}", stmt, orderBy)
+	}
+	if stmt == "" {
+		stmt = "nil"
 	}
 	return stmt
 }
